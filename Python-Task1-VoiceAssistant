@@ -1,0 +1,126 @@
+import datetime
+import webbrowser
+import sys
+
+import speech_recognition as sr
+import pyttsx3
+
+
+class VoiceAssistant:
+    def __init__(self):
+        self.recognizer = sr.Recognizer()
+        self.microphone = sr.Microphone()
+        self.engine = pyttsx3.init()
+
+        # Optional: tweak voice properties
+        self.engine.setProperty("rate", 175)
+        self.engine.setProperty("volume", 1.0)
+
+        # Calibrate for ambient noise once at startup
+        with self.microphone as source:
+            self.recognizer.adjust_for_ambient_noise(source, duration=1)
+
+    # ---------- Core I/O ----------
+
+    def speak(self, text):
+        """Convert text to speech and print it for reference."""
+        print(f"Assistant: {text}")
+        self.engine.say(text)
+        self.engine.runAndWait()
+
+    def listen(self):
+        """Capture audio from the microphone and convert it to text.
+        Returns the recognized text (lowercased) or None if unrecognized."""
+        with self.microphone as source:
+            print("\nListening...")
+            try:
+                audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=8)
+            except sr.WaitTimeoutError:
+                self.speak("I didn't hear anything. Could you repeat that?")
+                return None
+
+        try:
+            text = self.recognizer.recognize_google(audio)
+            print(f"You said: {text}")
+            return text.lower()
+        except sr.UnknownValueError:
+            # Speech was unintelligible
+            self.speak("Sorry, I didn't catch that. Could you please repeat?")
+            return None
+        except sr.RequestError as e:
+            self.speak("I'm having trouble reaching the speech service right now.")
+            print(f"RequestError: {e}")
+            return None
+
+    # ---------- Feature Handlers ----------
+
+    def handle_greeting(self):
+        self.speak("Hello! How can I help you today?")
+
+    def handle_time(self):
+        now = datetime.datetime.now()
+        self.speak(f"The current time is {now.strftime('%I:%M %p')}.")
+
+    def handle_date(self):
+        now = datetime.datetime.now()
+        self.speak(f"Today's date is {now.strftime('%A, %B %d, %Y')}.")
+
+    def handle_search(self, command):
+        # Pull out the topic after trigger words
+        trigger_words = ["search for", "search", "look up", "google"]
+        topic = command
+        for trigger in trigger_words:
+            if trigger in command:
+                topic = command.split(trigger, 1)[1].strip()
+                break
+
+        if not topic:
+            self.speak("What would you like me to search for?")
+            topic_input = self.listen()
+            if not topic_input:
+                return
+            topic = topic_input
+
+        self.speak(f"Searching the web for {topic}.")
+        url = f"https://www.google.com/search?q={topic.replace(' ', '+')}"
+        webbrowser.open(url)
+
+    def handle_exit(self):
+        self.speak("Goodbye! Have a great day.")
+        sys.exit(0)
+
+    # ---------- Command Router ----------
+
+    def process_command(self, command):
+        if command is None:
+            return  # already handled by listen()'s error message
+
+        if "hello" in command or "hi assistant" in command:
+            self.handle_greeting()
+        elif "time" in command:
+            self.handle_time()
+        elif "date" in command:
+            self.handle_date()
+        elif any(trigger in command for trigger in ["search", "look up", "google"]):
+            self.handle_search(command)
+        elif any(word in command for word in ["exit", "quit", "stop", "goodbye"]):
+            self.handle_exit()
+        else:
+            self.speak(
+                "I'm not sure how to help with that yet. "
+                "Try saying hello, asking for the time or date, "
+                "or asking me to search something."
+            )
+
+    # ---------- Main Loop ----------
+
+    def run(self):
+        self.speak("Voice assistant is ready. Say 'hello' to get started, or 'exit' to quit.")
+        while True:
+            command = self.listen()
+            self.process_command(command)
+
+
+if __name__ == "__main__":
+    assistant = VoiceAssistant()
+    assistant.run()
